@@ -1,7 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using OpenTelemetrySample.Entities;
 using OpenTelemetrySample.Services.Abstractions;
-using System.Diagnostics;
+using System.Diagnostics.Metrics;
 
 namespace OpenTelemetrySample.Controllers
 {
@@ -11,27 +12,45 @@ namespace OpenTelemetrySample.Controllers
     {
         private readonly AppDbContext _dbContext;
         private readonly IPlaceholderService _placeholderService;
+        private readonly IConfiguration _configuration;
+        private readonly Counter<long> _sampleCounter = Meters
+            .SampleMeter.CreateCounter<long>("SampleCounter");
 
         public PostController(
             AppDbContext dbContext,
-            IPlaceholderService placeholderService
+            IPlaceholderService placeholderService,
+            IConfiguration configuration
         )
         {
             _dbContext = dbContext;
             _placeholderService = placeholderService;
+            _configuration = configuration;
+        }
+
+        [HttpGet("env")]
+        public async Task<IActionResult> GetEnv(CancellationToken ct)
+        {
+            _sampleCounter.Add(1, new("name", "apple"), new("color", "red"));
+
+            await Task.CompletedTask;
+
+            return Ok(Environment.GetEnvironmentVariables());
         }
 
         [HttpPost]
-        public async Task<IActionResult> Send(Post post)
+        public async Task<IActionResult> Send(CancellationToken ct)
         {
-            await Task.CompletedTask;
+            _sampleCounter.Add(1);
 
-            return Ok(post);
+            var rs = await _dbContext.Posts.ToListAsync(ct);
+
+            return Ok(new { rs.Count, Item = rs });
         }
 
         [HttpGet]
         public async Task<IActionResult> Get(CancellationToken ct)
         {
+            _sampleCounter.Add(1);
             var rs = await _placeholderService.GetPosts(ct);
 
             var posts = rs.Select(r => new Post
